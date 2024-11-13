@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PUBG Map Viewer with Distance Measurement</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+    <style>
+        #map {
+            height: 100vh;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        #distance-info {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+            font-weight: bold;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div id="distance-info">Distance: 0 meters</div>
+
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+    <script>
+        // Configuration for the map and image
+        const imageUrl = '/maps/miramar.jpg';  // Path to the map image
+        const imageWidth = 1920;  // Image width in pixels
+        const imageHeight = 1080; // Image height in pixels
+        const realSquareDistance = 100; // Real-world distance represented by each small square (100 meters)
+
+        // Update this value based on actual measurement of one 100-meter square's side in pixels
+        const pixelsPerSquare = 80;  // Replace with actual pixel measurement
+        const pixelsPerMeter = pixelsPerSquare / realSquareDistance; // Calculate pixels per meter
+
+        // Initialize the map with custom settings
+        const map = L.map('map', {
+            minZoom: -2,
+            maxZoom: 4,
+            crs: L.CRS.Simple,
+            zoomControl: false,
+            attributionControl: false
+        });
+
+        // Define image bounds for the overlay
+        const imageBounds = [[0, 0], [imageHeight, imageWidth]];
+
+        // Add the image overlay to the map
+        L.imageOverlay(imageUrl, imageBounds).addTo(map);
+        map.fitBounds(imageBounds); // Fit the map view to the image bounds
+
+        // Initialize Leaflet Draw for creating lines
+        const drawnItems = new L.FeatureGroup();
+        map.addLayer(drawnItems);
+
+        const drawControl = new L.Control.Draw({
+            draw: {
+                polyline: true,  // Only enable line drawing
+                polygon: false,
+                circle: false,
+                rectangle: false,
+                marker: false,
+                circlemarker: false
+            },
+            edit: {
+                featureGroup: drawnItems
+            }
+        });
+        map.addControl(drawControl);
+
+        // Function to calculate distance between points in a polyline
+        function calculateDistance(latlngs) {
+            let distanceInPixels = 0;
+            for (let i = 0; i < latlngs.length - 1; i++) {
+                const pointA = map.latLngToLayerPoint(latlngs[i]);
+                const pointB = map.latLngToLayerPoint(latlngs[i + 1]);
+                distanceInPixels += pointA.distanceTo(pointB);
+            }
+            return distanceInPixels / pixelsPerMeter; // Convert pixel distance to meters
+        }
+
+        // Event listener for when a line (polyline) is created
+        map.on(L.Draw.Event.CREATED, function(event) {
+            const layer = event.layer;
+            drawnItems.addLayer(layer);
+
+            if (layer instanceof L.Polyline) {
+                // Get the line's coordinates
+                const latlngs = layer.getLatLngs();
+                const distanceInMeters = calculateDistance(latlngs);
+
+                // Display the distance in the info box
+                document.getElementById("distance-info").innerHTML = `Distance: ${distanceInMeters.toFixed(2)} meters`;
+            }
+        });
+    </script>
+</body>
+</html>
