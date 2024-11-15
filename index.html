@@ -3,111 +3,143 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PUBG Map Viewer with Distance Measurement</title>
+    <title>Leaflet Map with Aspect Ratio Adjustment</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
     <style>
-        #map {
-            height: 90vh;
-            width: 100%;
-        }
+        #map { height: 100vh; width: 100vw; }
         #distance-info {
-            margin-top: 10px;
-            font-weight: bold;
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: white;
+            padding: 5px;
+            font-size: 16px;
+            z-index: 1000;
+        }
+        #controls {
+            position: absolute;
+            top: 60px;
+            left: 10px;
+            background: white;
+            padding: 10px;
+            font-size: 16px;
+            z-index: 1000;
+            border-radius: 5px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.2);
         }
         #reset-button {
-            margin-top: 10px;
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 5px;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
         }
     </style>
 </head>
 <body>
+    <div id="distance-info">Click on the map to set two points.</div>
     <div id="map"></div>
-    <div id="distance-info">Distance: 0 meters</div>
+
+    <div id="controls">
+        <label>Scale Factor: <span id="scaleFactorDisplay">4</span></label><br>
+        <input type="range" id="scaleFactor" min="0.1" max="10.0" value="4" step="0.1"><br>
+        <button id="update-scale">Update Scale Factor</button>
+    </div>
+
     <button id="reset-button">Reset Measurement</button>
 
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
     <script>
-        // Map configuration
-        const imageUrl = '/maps/miramar.jpg';  // Path to the map image
-        const imageWidth = 1920;  // Image width in pixels
-        const imageHeight = 1080; // Image height in pixels
+        // Set the image dimensions (width and height) based on the actual image size in pixels
+        const imageWidth = 2000;  // Adjust this to your image width
+        const imageHeight = 1500 * 1.41;  // Adjust height to correct aspect ratio
 
-        // Calibrate the scale: Assume each 100-meter square is 89 pixels in length
-        const pixelsPerSquare = 89;  // Replace with actual measured pixel length of a 100-meter square
-        const realSquareDistance = 100;  // Real-world distance represented by each small square (100 meters)
-        const pixelsPerMeter = pixelsPerSquare / realSquareDistance; // Calculate pixels per meter
-
-        // Initialize map
+        // Initialize the map with custom CRS for an image-based map
         const map = L.map('map', {
-            minZoom: -2,
+            crs: L.CRS.Simple,
+            minZoom: -1,
             maxZoom: 4,
-            crs: L.CRS.Simple
+            zoomControl: true,
         });
+
+        // Set the bounds to fit the entire image with adjusted height
+        const imageUrl = '/maps/miramar.jpg';
         const imageBounds = [[0, 0], [imageHeight, imageWidth]];
         L.imageOverlay(imageUrl, imageBounds).addTo(map);
-        map.fitBounds(imageBounds);
 
-        // Variables for tracking points and total distance
-        let pointA = null;
-        let totalDistance = 0;
+        // Center the map on the image by setting the view to the midpoint of the image bounds
+        const centerPoint = [(imageHeight / 2), (imageWidth / 2)];
+        map.setView(centerPoint, 0);
 
-        // Function to display a point on the map
-        function displayPoint(lat, lng) {
-            L.circleMarker([lat, lng], { color: 'red', radius: 3 }).addTo(map);
-        }
+        // Initialize a single scale factor
+        let scaleFactor = 4;
 
-        // Function to draw line between two points
-        function drawLine(pointA, pointB) {
-            if (pointA && pointB) {
-                L.polyline([pointA, pointB], { color: 'blue' }).addTo(map);
+        let startMarker, endMarker, line;
+
+        // Function to calculate and display adjusted distance
+        function updateDistance() {
+            if (startMarker && endMarker) {
+                const start = startMarker.getLatLng();
+                const end = endMarker.getLatLng();
+                const distance = map.distance(start, end);
+
+                // Apply the single scale factor for all directions
+                const adjustedDistance = distance * scaleFactor;
+
+                document.getElementById('distance-info').textContent = `Distance: ${adjustedDistance.toFixed(2)} meters`;
             }
         }
 
-        // Function to calculate distance between two points in meters
-        function calculateDistance(pointA, pointB) {
-            const point1 = map.latLngToLayerPoint(pointA);
-            const point2 = map.latLngToLayerPoint(pointB);
-            const distanceInPixels = point1.distanceTo(point2);
-            return distanceInPixels / pixelsPerMeter;  // Convert pixel distance to meters
+        // Function to reset the measurement
+        function resetMeasurement() {
+            if (startMarker) map.removeLayer(startMarker);
+            if (endMarker) map.removeLayer(endMarker);
+            if (line) map.removeLayer(line);
+            startMarker = endMarker = line = null;
+            document.getElementById('distance-info').textContent = 'Click on the map to set two points.';
         }
 
-        // Map click event for measuring distance
-        map.on('click', (e) => {
-            const clickedPoint = e.latlng;
-            displayPoint(clickedPoint.lat, clickedPoint.lng);
+        // Update displayed scale factor value when the slider is changed
+        document.getElementById('scaleFactor').addEventListener('input', function() {
+            document.getElementById('scaleFactorDisplay').textContent = this.value;
+        });
 
-            if (!pointA) {
-                // Set pointA if it's the first click
-                pointA = clickedPoint;
-            } else {
-                // Calculate distance between pointA and clickedPoint (pointB)
-                const distance = calculateDistance(pointA, clickedPoint);
-                totalDistance += distance;
+        // Update scale factor when the "Update Scale Factor" button is clicked
+        document.getElementById('update-scale').addEventListener('click', function() {
+            scaleFactor = parseFloat(document.getElementById('scaleFactor').value);
+            updateDistance(); // Update distance with the new scale factor
+        });
 
-                // Draw line and update the distance display
-                drawLine(pointA, clickedPoint);
-                document.getElementById("distance-info").innerHTML = `Distance: ${totalDistance.toFixed(2)} meters`;
+        // Add a click event to set markers and draw the line
+        map.on('click', function(e) {
+            if (!startMarker) {
+                // Set the first point
+                startMarker = L.marker(e.latlng, { draggable: true }).addTo(map);
+            } else if (!endMarker) {
+                // Set the second point and draw the line
+                endMarker = L.marker(e.latlng, { draggable: true }).addTo(map);
+                line = L.polyline([startMarker.getLatLng(), endMarker.getLatLng()], { color: 'red' }).addTo(map);
+                updateDistance();
 
-                // Reset pointA for next measurement
-                pointA = clickedPoint;
+                // Add drag events to update distance as the markers are moved
+                startMarker.on('drag', function() {
+                    line.setLatLngs([startMarker.getLatLng(), endMarker.getLatLng()]);
+                    updateDistance();
+                });
+
+                endMarker.on('drag', function() {
+                    line.setLatLngs([startMarker.getLatLng(), endMarker.getLatLng()]);
+                    updateDistance();
+                });
             }
         });
 
-        // Reset button to clear measurements
-        document.getElementById('reset-button').addEventListener('click', () => {
-            // Clear all layers except the image overlay
-            map.eachLayer((layer) => {
-                if (layer instanceof L.Polyline || layer instanceof L.CircleMarker) {
-                    map.removeLayer(layer);
-                }
-            });
-
-            // Reset variables
-            pointA = null;
-            totalDistance = 0;
-            document.getElementById("distance-info").innerHTML = `Distance: 0 meters`;
-        });
+        // Reset button functionality
+        document.getElementById('reset-button').addEventListener('click', resetMeasurement);
     </script>
 </body>
 </html>
