@@ -8,104 +8,105 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
     <style>
         #map {
-            height: 100vh;
+            height: 90vh;
             width: 100%;
-            margin: 0;
-            padding: 0;
-        }
-        body, html {
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
         }
         #distance-info {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            padding: 10px;
-            background: white;
-            border-radius: 5px;
+            margin-top: 10px;
             font-weight: bold;
-            z-index: 1000;
+        }
+        #reset-button {
+            margin-top: 10px;
         }
     </style>
 </head>
 <body>
     <div id="map"></div>
     <div id="distance-info">Distance: 0 meters</div>
+    <button id="reset-button">Reset Measurement</button>
 
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
     <script>
-        // Configuration for the map and image
+        // Map configuration
         const imageUrl = '/maps/miramar.jpg';  // Path to the map image
         const imageWidth = 1920;  // Image width in pixels
         const imageHeight = 1080; // Image height in pixels
-        const realSquareDistance = 100; // Real-world distance represented by each small square (100 meters)
 
-        // Update this value based on actual measurement of one 100-meter square's side in pixels
-        const pixelsPerSquare = 80;  // Replace with actual pixel measurement
+        // Calibrate the scale: Assume each 100-meter square is 89 pixels in length
+        const pixelsPerSquare = 89;  // Replace with actual measured pixel length of a 100-meter square
+        const realSquareDistance = 100;  // Real-world distance represented by each small square (100 meters)
         const pixelsPerMeter = pixelsPerSquare / realSquareDistance; // Calculate pixels per meter
 
-        // Initialize the map with custom settings
+        // Initialize map
         const map = L.map('map', {
             minZoom: -2,
             maxZoom: 4,
-            crs: L.CRS.Simple,
-            zoomControl: false,
-            attributionControl: false
+            crs: L.CRS.Simple
         });
-
-        // Define image bounds for the overlay
         const imageBounds = [[0, 0], [imageHeight, imageWidth]];
-
-        // Add the image overlay to the map
         L.imageOverlay(imageUrl, imageBounds).addTo(map);
-        map.fitBounds(imageBounds); // Fit the map view to the image bounds
+        map.fitBounds(imageBounds);
 
-        // Initialize Leaflet Draw for creating lines
-        const drawnItems = new L.FeatureGroup();
-        map.addLayer(drawnItems);
+        // Variables for tracking points and total distance
+        let pointA = null;
+        let totalDistance = 0;
 
-        const drawControl = new L.Control.Draw({
-            draw: {
-                polyline: true,  // Only enable line drawing
-                polygon: false,
-                circle: false,
-                rectangle: false,
-                marker: false,
-                circlemarker: false
-            },
-            edit: {
-                featureGroup: drawnItems
-            }
-        });
-        map.addControl(drawControl);
-
-        // Function to calculate distance between points in a polyline
-        function calculateDistance(latlngs) {
-            let distanceInPixels = 0;
-            for (let i = 0; i < latlngs.length - 1; i++) {
-                const pointA = map.latLngToLayerPoint(latlngs[i]);
-                const pointB = map.latLngToLayerPoint(latlngs[i + 1]);
-                distanceInPixels += pointA.distanceTo(pointB);
-            }
-            return distanceInPixels / pixelsPerMeter; // Convert pixel distance to meters
+        // Function to display a point on the map
+        function displayPoint(lat, lng) {
+            L.circleMarker([lat, lng], { color: 'red', radius: 3 }).addTo(map);
         }
 
-        // Event listener for when a line (polyline) is created
-        map.on(L.Draw.Event.CREATED, function(event) {
-            const layer = event.layer;
-            drawnItems.addLayer(layer);
-
-            if (layer instanceof L.Polyline) {
-                // Get the line's coordinates
-                const latlngs = layer.getLatLngs();
-                const distanceInMeters = calculateDistance(latlngs);
-
-                // Display the distance in the info box
-                document.getElementById("distance-info").innerHTML = `Distance: ${distanceInMeters.toFixed(2)} meters`;
+        // Function to draw line between two points
+        function drawLine(pointA, pointB) {
+            if (pointA && pointB) {
+                L.polyline([pointA, pointB], { color: 'blue' }).addTo(map);
             }
+        }
+
+        // Function to calculate distance between two points in meters
+        function calculateDistance(pointA, pointB) {
+            const point1 = map.latLngToLayerPoint(pointA);
+            const point2 = map.latLngToLayerPoint(pointB);
+            const distanceInPixels = point1.distanceTo(point2);
+            return distanceInPixels / pixelsPerMeter;  // Convert pixel distance to meters
+        }
+
+        // Map click event for measuring distance
+        map.on('click', (e) => {
+            const clickedPoint = e.latlng;
+            displayPoint(clickedPoint.lat, clickedPoint.lng);
+
+            if (!pointA) {
+                // Set pointA if it's the first click
+                pointA = clickedPoint;
+            } else {
+                // Calculate distance between pointA and clickedPoint (pointB)
+                const distance = calculateDistance(pointA, clickedPoint);
+                totalDistance += distance;
+
+                // Draw line and update the distance display
+                drawLine(pointA, clickedPoint);
+                document.getElementById("distance-info").innerHTML = `Distance: ${totalDistance.toFixed(2)} meters`;
+
+                // Reset pointA for next measurement
+                pointA = clickedPoint;
+            }
+        });
+
+        // Reset button to clear measurements
+        document.getElementById('reset-button').addEventListener('click', () => {
+            // Clear all layers except the image overlay
+            map.eachLayer((layer) => {
+                if (layer instanceof L.Polyline || layer instanceof L.CircleMarker) {
+                    map.removeLayer(layer);
+                }
+            });
+
+            // Reset variables
+            pointA = null;
+            totalDistance = 0;
+            document.getElementById("distance-info").innerHTML = `Distance: 0 meters`;
         });
     </script>
 </body>
